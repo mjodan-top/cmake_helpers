@@ -34,11 +34,31 @@ function(target_prepare_qrc target_name)
         if (NOT qrc_files)
             return()
         endif()
+
+        # Collect files referenced inside each .qrc so that changes to
+        # resource payloads (images, sounds, etc.) trigger rcc regeneration
+        # even when the .qrc file itself is unchanged.
+        set(qrc_deps ${qrc_files})
+        foreach (qrc_entry ${qrc_files})
+            get_filename_component(qrc_dir "${qrc_entry}" DIRECTORY)
+            file(STRINGS "${qrc_entry}" qrc_lines REGEX "<file[^>]*>")
+            foreach (line ${qrc_lines})
+                string(REGEX REPLACE ".*<file[^>]*>([^<]+)</file>.*" "\\1" rel_path "${line}")
+                if (NOT "${rel_path}" STREQUAL "${line}")
+                    if (IS_ABSOLUTE "${rel_path}")
+                        list(APPEND qrc_deps "${rel_path}")
+                    else()
+                        list(APPEND qrc_deps "${qrc_dir}/${rel_path}")
+                    endif()
+                endif()
+            endforeach()
+        endforeach()
+
         set(rcc_file ${target_name}.rcc)
         set(rcc_path "${CMAKE_BINARY_DIR}/${rcc_file}")
         source_group(TREE ${CMAKE_BINARY_DIR} PREFIX Resources FILES ${rcc_path})
         add_custom_command(OUTPUT ${rcc_path}
-            DEPENDS ${qrc_files}
+            DEPENDS ${qrc_deps}
             COMMAND Qt::rcc ${rcc_flags} -o ${rcc_path} ${qrc_files}
             COMMAND_EXPAND_LISTS VERBATIM
         )
